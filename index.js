@@ -6,8 +6,7 @@ const app = express();
 const dotenv = require("dotenv");
 const cors = require("cors");
 const port = process.env.PORT || 5000;
-const { MongoClient, ServerApiVersion } = require("mongodb");
-const { ObjectId } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 app.use(cors());
 app.use(express.json());
@@ -15,7 +14,6 @@ dotenv.config();
 
 const uri = process.env.MONGODB_URI;
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -25,148 +23,170 @@ const client = new MongoClient(uri, {
 });
 
 async function run() {
-  
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-const db = client.db("MediQueue");
-  const tutorsCollection = db.collection("Tutors");
 
-  const bookingsCollection = db.collection("bookings");
+    const db = client.db("MediQueue");
+    const tutorsCollection = db.collection("Tutors");
+    const bookingsCollection = db.collection("bookings");
+
+    // 1. GET TUTORS (Handles both All Tutors AND Specific User filter via query param)
     app.get("/tutors", async (req, res) => {
-      const cursor = tutorsCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
+      try {
+        const { email } = req.query;
+        let query = {};
+
+        // Matches both your frontend form field payload exactly
+        if (email) {
+          query = { email: email };
+        }
+
+        const result = await tutorsCollection.find(query).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Failed to fetch tutor data" });
+      }
     });
 
+    // 2. GET SINGLE TUTOR BY ID
     app.get("/tutors/:tutorsId", async (req, res) => {
-      const { tutorsId } = req.params;
-      const query = { _id: new ObjectId(tutorsId) };
-      const result = await tutorsCollection.findOne(query);
-      res.send(result);
+      try {
+        const { tutorsId } = req.params;
+        const query = { _id: new ObjectId(tutorsId) };
+        const result = await tutorsCollection.findOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Tutor profile not found" });
+      }
     });
 
+    // 3. GET FEATURED TUTORS
     app.get("/featured-tutors", async (req, res) => {
-      const result = await tutorsCollection.find().limit(6).toArray();
-
-      res.send(result);
+      try {
+        const result = await tutorsCollection.find().limit(6).toArray();
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Failed to fetch featured tutors" });
+      }
     });
 
-    // add-tutor in the DB
+    // 4. POST NEW TUTOR
     app.post("/tutors", async (req, res) => {
       try {
         const tutorData = req.body;
-
         const result = await tutorsCollection.insertOne(tutorData);
-
         res.send({
           success: true,
           message: "Tutor added successfully",
           insertedId: result.insertedId,
         });
       } catch (error) {
-        console.log(error);
-
-        res.status(500).send({
-          success: false,
-          message: "Failed to add tutor",
-        });
+        console.error(error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to add tutor" });
       }
     });
 
-    // Create Booking
-    app.post("/bookings", async (req, res) => {
-
+    // 5. PATCH UPDATE TUTOR PROFILE
+    app.patch("/tutors/:id", async (req, res) => {
       try {
+        const { id } = req.params;
+        const updateData = req.body;
 
-        const bookingData = req.body;
+        // Strip the immutable MongoDB system ID before committing updates
+        delete updateData._id;
 
-        const { tutorId } = bookingData;
+        // Clean values safely back into strict numeric signatures
+        if (updateData.price) updateData.price = Number(updateData.price);
+        if (updateData.totalSlot)
+          updateData.totalSlot = Number(updateData.totalSlot);
 
-        // Find Tutor
-        const tutor = await tutorsCollection.findOne({
-          _id: new ObjectId(tutorId),
-        });
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: updateData,
+        };
 
-        // Tutor Not Found
-        if (!tutor) {
+        const result = await tutorsCollection.updateOne(filter, updateDoc);
 
-          return res.status(404).send({
-            message: "Tutor not found",
-          });
+        if (result.modifiedCount > 0) {
+          res.send({ success: true, message: "Tutor updated successfully" });
+        } else {
+          res.send({ success: true, message: "No data changes discovered" });
         }
-
-        // Slot Check
-        if (tutor.totalSlot <= 0) {
-
-          return res.status(400).send({
-            message:
-              "This session is fully booked. You can’t join at the moment.",
-          });
-        }
-
-        // Session Date Check
-        const currentDate = new Date();
-
-        const sessionDate = new Date(tutor.sessionDate);
-
-        if (currentDate < sessionDate) {
-
-          return res.status(400).send({
-            message:
-              "Booking is not available yet for this tutor",
-          });
-        }
-
-        // Decrease Slot
-        await tutorsCollection.updateOne(
-          {
-            _id: new ObjectId(tutorId),
-          },
-          {
-            $inc: {
-              totalSlot: -1,
-            },
-          }
-        );
-
-        // Insert Booking
-        const result = await bookingsCollection.insertOne({
-          ...bookingData,
-          bookingStatus: "Booked",
-          bookingDate: new Date(),
-        });
-
-        res.status(201).send({
-          success: true,
-          message: "Booking successful",
-          insertedId: result.insertedId,
-        });
-
       } catch (error) {
-
-        console.log(error);
-
-        res.status(500).send({
-          success: false,
-          message: "Failed to create booking",
-        });
+        console.error(error);
+        res
+          .status(500)
+          .send({
+            success: false,
+            message: "Database update transaction failed",
+          });
       }
     });
 
+    // 6. DELETE TUTOR PROFILE
+    app.delete("/tutors/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+        const query = { _id: new ObjectId(id) };
+
+        const result = await tutorsCollection.deleteOne(query);
+
+        if (result.deletedCount > 0) {
+          res.send({
+            success: true,
+            message: "Tutor profile deleted successfully",
+          });
+        } else {
+          res
+            .status(404)
+            .send({ success: false, message: "Tutor profile entry not found" });
+        }
+      } catch (error) {
+        console.error(error);
+        res
+          .status(500)
+          .send({
+            success: false,
+            message: "Database deletion execution failed",
+          });
+      }
+    });
+
+    // 7. GET BOOKINGS
+    app.get("/bookings", async (req, res) => {
+      try {
+        const { email } = req.query;
+        let query = {};
+
+        if (email) {
+          query = { studentEmail: email };
+        }
+
+        const result = await bookingsCollection.find(query).toArray();
+        res.status(200).send(result);
+      } catch (error) {
+        console.error("Failed to query bookings:", error);
+        res
+          .status(500)
+          .send({ message: "Internal server error reading bookings data." });
+      }
+    });
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
     );
-  } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close();
+  } catch (error) {
+    console.error("Database connection bootstrap error:", error);
   }
 }
 run().catch(console.dir);
 
+// Root Base Routes
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
