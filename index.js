@@ -1,3 +1,6 @@
+const dns = require("node:dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 const express = require("express");
 const app = express();
 const dotenv = require("dotenv");
@@ -7,6 +10,7 @@ const { MongoClient, ServerApiVersion } = require("mongodb");
 const { ObjectId } = require("mongodb");
 
 app.use(cors());
+app.use(express.json());
 dotenv.config();
 
 const uri = process.env.MONGODB_URI;
@@ -48,6 +52,32 @@ async function run() {
 
       res.send(result);
     });
+
+    // add-tutor in the DB
+    app.post("/tutors", async (req, res) => {
+
+  try {
+
+    const tutorData = req.body;
+
+    const result = await tutorsCollection.insertOne(tutorData);
+
+    res.send({
+      success: true,
+      message: "Tutor added successfully",
+      insertedId: result.insertedId,
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to add tutor",
+    });
+  }
+});
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
