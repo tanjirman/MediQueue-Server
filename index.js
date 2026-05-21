@@ -25,15 +25,16 @@ const client = new MongoClient(uri, {
 });
 
 async function run() {
+  
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     // Send a ping to confirm a successful connection
     // await client.db("admin").command({ ping: 1 });
+const db = client.db("MediQueue");
+  const tutorsCollection = db.collection("Tutors");
 
-    const db = client.db("MediQueue");
-    const tutorsCollection = db.collection("Tutors");
-
+  const bookingsCollection = db.collection("bookings");
     app.get("/tutors", async (req, res) => {
       const cursor = tutorsCollection.find();
       const result = await cursor.toArray();
@@ -55,29 +56,106 @@ async function run() {
 
     // add-tutor in the DB
     app.post("/tutors", async (req, res) => {
+      try {
+        const tutorData = req.body;
 
-  try {
+        const result = await tutorsCollection.insertOne(tutorData);
 
-    const tutorData = req.body;
+        res.send({
+          success: true,
+          message: "Tutor added successfully",
+          insertedId: result.insertedId,
+        });
+      } catch (error) {
+        console.log(error);
 
-    const result = await tutorsCollection.insertOne(tutorData);
-
-    res.send({
-      success: true,
-      message: "Tutor added successfully",
-      insertedId: result.insertedId,
+        res.status(500).send({
+          success: false,
+          message: "Failed to add tutor",
+        });
+      }
     });
 
-  } catch (error) {
+    // Create Booking
+    app.post("/bookings", async (req, res) => {
 
-    console.log(error);
+      try {
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to add tutor",
+        const bookingData = req.body;
+
+        const { tutorId } = bookingData;
+
+        // Find Tutor
+        const tutor = await tutorsCollection.findOne({
+          _id: new ObjectId(tutorId),
+        });
+
+        // Tutor Not Found
+        if (!tutor) {
+
+          return res.status(404).send({
+            message: "Tutor not found",
+          });
+        }
+
+        // Slot Check
+        if (tutor.totalSlot <= 0) {
+
+          return res.status(400).send({
+            message:
+              "This session is fully booked. You can’t join at the moment.",
+          });
+        }
+
+        // Session Date Check
+        const currentDate = new Date();
+
+        const sessionDate = new Date(tutor.sessionDate);
+
+        if (currentDate < sessionDate) {
+
+          return res.status(400).send({
+            message:
+              "Booking is not available yet for this tutor",
+          });
+        }
+
+        // Decrease Slot
+        await tutorsCollection.updateOne(
+          {
+            _id: new ObjectId(tutorId),
+          },
+          {
+            $inc: {
+              totalSlot: -1,
+            },
+          }
+        );
+
+        // Insert Booking
+        const result = await bookingsCollection.insertOne({
+          ...bookingData,
+          bookingStatus: "Booked",
+          bookingDate: new Date(),
+        });
+
+        res.status(201).send({
+          success: true,
+          message: "Booking successful",
+          insertedId: result.insertedId,
+        });
+
+      } catch (error) {
+
+        console.log(error);
+
+        res.status(500).send({
+          success: false,
+          message: "Failed to create booking",
+        });
+      }
     });
-  }
-});
+
 
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!",
