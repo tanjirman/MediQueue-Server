@@ -13,9 +13,11 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://medi-queue-igcv655pa-tanjirmahbub07-6178s-projects.vercel.app"
+    "https://medi-queue-zeta.vercel.app"
   ],
-  credentials: true
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true, 
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 
