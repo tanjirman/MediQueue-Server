@@ -10,7 +10,15 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://your-frontend-project-name.vercel.app" // ADD YOUR FRONTEND URL HERE
+  ],
+  credentials: true
+}));
+
+
 app.use(express.json());
 
 const port = process.env.PORT || 5000;
@@ -406,6 +414,10 @@ async function run() {
 
 run().catch(console.dir);
 
-app.listen(port, () => {
-  console.log(`🚀 Server running on ${port}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+  });
+}
+
+module.exports = app;
