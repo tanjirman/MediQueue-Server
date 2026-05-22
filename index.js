@@ -4,43 +4,118 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
-const { MongoClient, ObjectId, ServerApiVersion } = require("mongodb");
+
+const {
+  MongoClient,
+  ObjectId,
+  ServerApiVersion,
+} = require("mongodb");
 
 dotenv.config();
 
 const app = express();
 
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "https://medi-queue-zeta.vercel.app"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  credentials: true, 
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+const { auth } = require("./auth");
 
+// =========================
+// MIDDLEWARE
+// =========================
+
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://medi-queue-zeta.vercel.app",
+      "https://medi-queue-server-eight.vercel.app",
+      "https://medi-queue-server-8na0g7nxx-tanjirmahbub07-6178s-projects.vercel.app",
+    ],
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
+// =========================
+// BETTER AUTH ROUTE
+// =========================
+
+app.use("/api/auth", (req, res) => {
+  return auth.handler(req, res);
+});
+
+// =========================
+// PORT
+// =========================
+
 const port = process.env.PORT || 5000;
 
-const client = new MongoClient(process.env.MONGODB_URI, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
+// =========================
+// MONGODB
+// =========================
+
+const client = new MongoClient(
+  process.env.MONGODB_URI,
+  {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  }
+);
 
 function getCollections() {
   const db = client.db("MediQueue");
 
   return {
-    tutorsCollection: db.collection("tutors"),
-    bookingsCollection: db.collection("bookings"),
+    tutorsCollection: db.collection(
+      "tutors"
+    ),
+
+    bookingsCollection: db.collection(
+      "bookings"
+    ),
   };
 }
+
+// =========================
+// VERIFY SESSION
+// =========================
+
+const verifySession = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    const session =
+      await auth.api.getSession({
+        headers: req.headers,
+      });
+
+    if (!session) {
+      return res.status(401).send({
+        success: false,
+        message: "Unauthorized Access",
+      });
+    }
+
+    req.user = session.user;
+
+    next();
+  } catch (error) {
+    console.log(error);
+
+    res.status(401).send({
+      success: false,
+      message: "Invalid Session",
+    });
+  }
+};
+
+// =========================
+// RUN SERVER
+// =========================
 
 async function run() {
   try {
@@ -48,13 +123,30 @@ async function run() {
 
     console.log("✅ MongoDB Connected");
 
+    // =========================
+    // ROOT
+    // =========================
+
+    app.get("/", (req, res) => {
+      res.send(
+        "MediQueue Server Running"
+      );
+    });
+
+    // =========================
     // GET ALL TUTORS
+    // =========================
 
     app.get("/tutors", async (req, res) => {
       try {
-        const { tutorsCollection } = getCollections();
+        const { tutorsCollection } =
+          getCollections();
 
-        const { search, sort, email } = req.query;
+        const {
+          search,
+          sort,
+          email,
+        } = req.query;
 
         let query = {};
 
@@ -66,7 +158,7 @@ async function run() {
           };
         }
 
-        // My tutors filter
+        // My Tutors
         if (email) {
           query.creatorEmail = email;
         }
@@ -82,14 +174,16 @@ async function run() {
           sortOption.price = -1;
         }
 
-        const result = await tutorsCollection
-          .find(query)
-          .sort(sortOption)
-          .toArray();
+        const result =
+          await tutorsCollection
+            .find(query)
+            .sort(sortOption)
+            .toArray();
 
         res.send(result);
       } catch (err) {
         console.log(err);
+
         res.status(500).send({
           success: false,
           message: err.message,
@@ -97,318 +191,440 @@ async function run() {
       }
     });
 
-    app.get("/featured-tutors", async (req, res) => {
-      try {
-        const { tutorsCollection } = getCollections();
+    // =========================
+    // FEATURED TUTORS
+    // =========================
 
-        const result = await tutorsCollection.find({}).limit(6).toArray();
+    app.get(
+      "/featured-tutors",
+      async (req, res) => {
+        try {
+          const {
+            tutorsCollection,
+          } = getCollections();
 
-        res.status(200).send(result);
-      } catch (err) {
-        console.error("Error in /featured-tutors route:", err);
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
+          const result =
+            await tutorsCollection
+              .find({})
+              .limit(6)
+              .toArray();
+
+          res.send(result);
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
+            success: false,
+            message: err.message,
+          });
+        }
       }
-    });
+    );
 
+    // =========================
     // GET SINGLE TUTOR
+    // =========================
 
-    app.get("/tutors/:id", async (req, res) => {
-      try {
-        const { tutorsCollection } = getCollections();
+    app.get(
+      "/tutors/:id",
+      async (req, res) => {
+        try {
+          const {
+            tutorsCollection,
+          } = getCollections();
 
-        const id = req.params.id;
+          const id = req.params.id;
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
+          if (!ObjectId.isValid(id)) {
+            return res
+              .status(400)
+              .send({
+                success: false,
+                message:
+                  "Invalid tutor id",
+              });
+          }
+
+          const result =
+            await tutorsCollection.findOne({
+              _id: new ObjectId(id),
+            });
+
+          res.send(result);
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
             success: false,
-            message: "Invalid tutor id",
+            message: err.message,
           });
         }
-
-        const result = await tutorsCollection.findOne({
-          _id: new ObjectId(id),
-        });
-
-        res.send(result);
-      } catch (err) {
-        console.log(err);
-
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
       }
-    });
+    );
 
+    // =========================
     // CREATE TUTOR
+    // =========================
 
-    app.post("/tutors", async (req, res) => {
-      try {
-        const { tutorsCollection } = getCollections();
+    app.post(
+      "/tutors",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            tutorsCollection,
+          } = getCollections();
 
-        const tutor = req.body;
+          const tutor = req.body;
 
-        const tutorData = {
-          ...tutor,
-          price: Number(tutor.price),
-          totalSlot: Number(tutor.totalSlot),
-          booked: 0,
-          createdAt: new Date(),
-        };
+          const tutorData = {
+            ...tutor,
+            creatorEmail:
+              req.user.email,
+            price: Number(
+              tutor.price
+            ),
+            totalSlot: Number(
+              tutor.totalSlot
+            ),
+            booked: 0,
+            createdAt: new Date(),
+          };
 
-        const result = await tutorsCollection.insertOne(tutorData);
+          const result =
+            await tutorsCollection.insertOne(
+              tutorData
+            );
 
-        res.send({
-          success: true,
-          insertedId: result.insertedId,
-        });
-      } catch (err) {
-        console.log(err);
+          res.send({
+            success: true,
+            insertedId:
+              result.insertedId,
+          });
+        } catch (err) {
+          console.log(err);
 
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
+          res.status(500).send({
+            success: false,
+            message: err.message,
+          });
+        }
       }
-    });
+    );
 
+    // =========================
     // UPDATE TUTOR
+    // =========================
 
-    app.patch("/tutors/:id", async (req, res) => {
-      try {
-        const { tutorsCollection } = getCollections();
+    app.patch(
+      "/tutors/:id",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            tutorsCollection,
+          } = getCollections();
 
-        const id = req.params.id;
+          const id = req.params.id;
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
+          if (!ObjectId.isValid(id)) {
+            return res
+              .status(400)
+              .send({
+                success: false,
+                message:
+                  "Invalid tutor id",
+              });
+          }
+
+          const updateData =
+            req.body;
+
+          delete updateData._id;
+
+          if (updateData.price) {
+            updateData.price =
+              Number(
+                updateData.price
+              );
+          }
+
+          if (
+            updateData.totalSlot
+          ) {
+            updateData.totalSlot =
+              Number(
+                updateData.totalSlot
+              );
+          }
+
+          const result =
+            await tutorsCollection.updateOne(
+              {
+                _id: new ObjectId(
+                  id
+                ),
+              },
+              {
+                $set: updateData,
+              }
+            );
+
+          res.send({
+            success: true,
+            modifiedCount:
+              result.modifiedCount,
+          });
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
             success: false,
-            message: "Invalid tutor id",
+            message: err.message,
           });
         }
-
-        const updateData = req.body;
-
-        delete updateData._id;
-
-        if (updateData.price) {
-          updateData.price = Number(updateData.price);
-        }
-
-        if (updateData.totalSlot) {
-          updateData.totalSlot = Number(updateData.totalSlot);
-        }
-
-        const result = await tutorsCollection.updateOne(
-          {
-            _id: new ObjectId(id),
-          },
-          {
-            $set: updateData,
-          },
-        );
-
-        res.send({
-          success: true,
-          modifiedCount: result.modifiedCount,
-        });
-      } catch (err) {
-        console.log(err);
-
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
       }
-    });
+    );
 
+    // =========================
     // DELETE TUTOR
+    // =========================
 
-    app.delete("/tutors/:id", async (req, res) => {
-      try {
-        const { tutorsCollection, bookingsCollection } = getCollections();
+    app.delete(
+      "/tutors/:id",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            tutorsCollection,
+            bookingsCollection,
+          } = getCollections();
 
-        const id = req.params.id;
+          const id = req.params.id;
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
+          if (!ObjectId.isValid(id)) {
+            return res
+              .status(400)
+              .send({
+                success: false,
+                message:
+                  "Invalid tutor id",
+              });
+          }
+
+          await bookingsCollection.deleteMany(
+            {
+              tutorId: id,
+            }
+          );
+
+          const result =
+            await tutorsCollection.deleteOne(
+              {
+                _id: new ObjectId(
+                  id
+                ),
+              }
+            );
+
+          res.send({
+            success: true,
+            deletedCount:
+              result.deletedCount,
+          });
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
             success: false,
-            message: "Invalid tutor id",
+            message: err.message,
           });
         }
-
-        // delete bookings linked to tutor
-        await bookingsCollection.deleteMany({
-          tutorId: id,
-        });
-
-        // delete tutor
-        const result = await tutorsCollection.deleteOne({
-          _id: new ObjectId(id),
-        });
-
-        res.send({
-          success: true,
-          deletedCount: result.deletedCount,
-        });
-      } catch (err) {
-        console.log(err);
-
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
       }
-    });
+    );
 
-    // GET BOOKINGS (FIXED VERSION)
+    // =========================
+    // GET BOOKINGS
+    // =========================
 
-    app.get("/bookings", async (req, res) => {
-      try {
-        
-        const { bookingsCollection } = getCollections();
+    app.get(
+      "/bookings",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            bookingsCollection,
+          } = getCollections();
 
-        const queryEmail = req.query.email;
+          const result =
+            await bookingsCollection
+              .find({
+                studentEmail:
+                  req.user.email,
+              })
+              .toArray();
 
-        let query = {};
-        if (queryEmail) {
-          
-          query = { studentEmail: queryEmail.trim() };
+          res.send(result);
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
+            success: false,
+            message: err.message,
+          });
         }
-
-        const results = await bookingsCollection.find(query).toArray();
-        res.status(200).json(results);
-      } catch (err) {
-        console.error("Backend Error inside GET /bookings:", err);
-        res.status(500).json({ success: false, message: err.message });
       }
-    });
+    );
 
+    // =========================
     // CREATE BOOKING
+    // =========================
 
-    app.post("/bookings", async (req, res) => {
-      try {
-        const { bookingsCollection, tutorsCollection } = getCollections();
+    app.post(
+      "/bookings",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            bookingsCollection,
+            tutorsCollection,
+          } = getCollections();
 
-        const booking = req.body;
+          const booking =
+            req.body;
 
-        const tutor = await tutorsCollection.findOne({
-          _id: new ObjectId(booking.tutorId),
-        });
+          const tutor =
+            await tutorsCollection.findOne(
+              {
+                _id: new ObjectId(
+                  booking.tutorId
+                ),
+              }
+            );
 
-        // Tutor not found
-        if (!tutor) {
-          return res.status(404).send({
-            success: false,
-            message: "Tutor not found",
-          });
-        }
+          if (!tutor) {
+            return res
+              .status(404)
+              .send({
+                success: false,
+                message:
+                  "Tutor not found",
+              });
+          }
 
-        // Slot check
-        if (Number(tutor.totalSlot) <= 0) {
-          return res.status(400).send({
-            success: false,
-            message:
-              "This session is fully booked. You can’t join at the moment.",
-          });
-        }
+          if (
+            Number(
+              tutor.totalSlot
+            ) <= 0
+          ) {
+            return res
+              .status(400)
+              .send({
+                success: false,
+                message:
+                  "No available slots",
+              });
+          }
 
-        // Date restriction
-        const sessionDate = new Date(tutor.sessionDate || tutor.startDate);
+          const bookingData = {
+            ...booking,
+            studentEmail:
+              req.user.email,
+            bookingStatus:
+              "Booked",
+            bookingDate:
+              new Date(),
+          };
 
-        const now = new Date();
+          const result =
+            await bookingsCollection.insertOne(
+              bookingData
+            );
 
-        if (now < sessionDate) {
-          return res.status(400).send({
-            success: false,
-            message: "Booking is not available yet for this tutor",
-          });
-        }
-
-        // Booking data
-        const bookingData = {
-          ...booking,
-          bookingStatus: "Booked",
-          bookingDate: new Date(),
-        };
-
-        // Insert booking
-        const result = await bookingsCollection.insertOne(bookingData);
-
-        // decrease slot
-        await tutorsCollection.updateOne(
-          {
-            _id: new ObjectId(booking.tutorId),
-          },
-          {
-            $inc: {
-              totalSlot: -1,
+          await tutorsCollection.updateOne(
+            {
+              _id: new ObjectId(
+                booking.tutorId
+              ),
             },
-          },
-        );
+            {
+              $inc: {
+                totalSlot: -1,
+              },
+            }
+          );
 
-        res.send({
-          success: true,
-          insertedId: result.insertedId,
-        });
-      } catch (err) {
-        console.log(err);
+          res.send({
+            success: true,
+            insertedId:
+              result.insertedId,
+          });
+        } catch (err) {
+          console.log(err);
 
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
+          res.status(500).send({
+            success: false,
+            message: err.message,
+          });
+        }
       }
-    });
+    );
 
+    // =========================
     // CANCEL BOOKING
+    // =========================
 
-    app.patch("/bookings/cancel/:id", async (req, res) => {
-      try {
-        const { bookingsCollection } = getCollections();
+    app.patch(
+      "/bookings/cancel/:id",
+      verifySession,
+      async (req, res) => {
+        try {
+          const {
+            bookingsCollection,
+          } = getCollections();
 
-        const id = req.params.id;
+          const id = req.params.id;
 
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).send({
+          if (!ObjectId.isValid(id)) {
+            return res
+              .status(400)
+              .send({
+                success: false,
+                message:
+                  "Invalid booking id",
+              });
+          }
+
+          const result =
+            await bookingsCollection.updateOne(
+              {
+                _id: new ObjectId(
+                  id
+                ),
+              },
+              {
+                $set: {
+                  bookingStatus:
+                    "Cancelled",
+                },
+              }
+            );
+
+          res.send({
+            success: true,
+            modifiedCount:
+              result.modifiedCount,
+          });
+        } catch (err) {
+          console.log(err);
+
+          res.status(500).send({
             success: false,
-            message: "Invalid booking id",
+            message: err.message,
           });
         }
-
-        const result = await bookingsCollection.updateOne(
-          {
-            _id: new ObjectId(id),
-          },
-          {
-            $set: {
-              bookingStatus: "Cancelled",
-            },
-          },
-        );
-
-        res.send({
-          success: true,
-          modifiedCount: result.modifiedCount,
-        });
-      } catch (err) {
-        console.log(err);
-
-        res.status(500).send({
-          success: false,
-          message: err.message,
-        });
       }
-    });
-
-    // ROOT
-
-    app.get("/", (req, res) => {
-      res.send("MediQueue Server Running");
-    });
+    );
   } catch (err) {
     console.log(err);
   }
@@ -416,9 +632,18 @@ async function run() {
 
 run().catch(console.dir);
 
-if (process.env.NODE_ENV !== 'production') {
+// =========================
+// START SERVER
+// =========================
+
+if (
+  process.env.NODE_ENV !==
+  "production"
+) {
   app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+    console.log(
+      `Server running on http://localhost:${port}`
+    );
   });
 }
 
