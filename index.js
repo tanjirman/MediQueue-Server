@@ -38,9 +38,8 @@ async function run() {
 
     console.log("✅ MongoDB Connected");
 
-    
     // GET ALL TUTORS
-  
+
     app.get("/tutors", async (req, res) => {
       try {
         const { tutorsCollection } = getCollections();
@@ -88,9 +87,24 @@ async function run() {
       }
     });
 
-    
+    app.get("/featured-tutors", async (req, res) => {
+      try {
+        const { tutorsCollection } = getCollections();
+
+        const result = await tutorsCollection.find({}).limit(6).toArray();
+
+        res.status(200).send(result);
+      } catch (err) {
+        console.error("Error in /featured-tutors route:", err);
+        res.status(500).send({
+          success: false,
+          message: err.message,
+        });
+      }
+    });
+
     // GET SINGLE TUTOR
-  
+
     app.get("/tutors/:id", async (req, res) => {
       try {
         const { tutorsCollection } = getCollections();
@@ -119,9 +133,8 @@ async function run() {
       }
     });
 
-   
     // CREATE TUTOR
-   
+
     app.post("/tutors", async (req, res) => {
       try {
         const { tutorsCollection } = getCollections();
@@ -152,9 +165,8 @@ async function run() {
       }
     });
 
-    
     // UPDATE TUTOR
-   
+
     app.patch("/tutors/:id", async (req, res) => {
       try {
         const { tutorsCollection } = getCollections();
@@ -186,7 +198,7 @@ async function run() {
           },
           {
             $set: updateData,
-          }
+          },
         );
 
         res.send({
@@ -203,9 +215,8 @@ async function run() {
       }
     });
 
-
     // DELETE TUTOR
-    
+
     app.delete("/tutors/:id", async (req, res) => {
       try {
         const { tutorsCollection, bookingsCollection } = getCollections();
@@ -243,33 +254,31 @@ async function run() {
       }
     });
 
-    
-// GET BOOKINGS (FIXED VERSION)
+    // GET BOOKINGS (FIXED VERSION)
 
-app.get("/bookings", async (req, res) => {
-  try {
-    // 🎯 FIX 1: Destructure and pull the collection references cleanly from your helper function
-    const { bookingsCollection } = getCollections();
+    app.get("/bookings", async (req, res) => {
+      try {
+        
+        const { bookingsCollection } = getCollections();
 
-    const queryEmail = req.query.email;
+        const queryEmail = req.query.email;
 
-    let query = {};
-    if (queryEmail) {
-      // 🎯 FIX 2: Ensure we search exactly for the dynamic studentEmail key string saved by the modal form
-      query = { studentEmail: queryEmail.trim() };
-    }
+        let query = {};
+        if (queryEmail) {
+          
+          query = { studentEmail: queryEmail.trim() };
+        }
 
-    const results = await bookingsCollection.find(query).toArray();
-    res.status(200).json(results);
-  } catch (err) {
-    console.error("Backend Error inside GET /bookings:", err);
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+        const results = await bookingsCollection.find(query).toArray();
+        res.status(200).json(results);
+      } catch (err) {
+        console.error("Backend Error inside GET /bookings:", err);
+        res.status(500).json({ success: false, message: err.message });
+      }
+    });
 
-    
     // CREATE BOOKING
-    
+
     app.post("/bookings", async (req, res) => {
       try {
         const { bookingsCollection, tutorsCollection } = getCollections();
@@ -298,17 +307,14 @@ app.get("/bookings", async (req, res) => {
         }
 
         // Date restriction
-        const sessionDate = new Date(
-          tutor.sessionDate || tutor.startDate
-        );
+        const sessionDate = new Date(tutor.sessionDate || tutor.startDate);
 
         const now = new Date();
 
         if (now < sessionDate) {
           return res.status(400).send({
             success: false,
-            message:
-              "Booking is not available yet for this tutor",
+            message: "Booking is not available yet for this tutor",
           });
         }
 
@@ -331,7 +337,7 @@ app.get("/bookings", async (req, res) => {
             $inc: {
               totalSlot: -1,
             },
-          }
+          },
         );
 
         res.send({
@@ -348,9 +354,8 @@ app.get("/bookings", async (req, res) => {
       }
     });
 
-    
     // CANCEL BOOKING
-   
+
     app.patch("/bookings/cancel/:id", async (req, res) => {
       try {
         const { bookingsCollection } = getCollections();
@@ -372,7 +377,7 @@ app.get("/bookings", async (req, res) => {
             $set: {
               bookingStatus: "Cancelled",
             },
-          }
+          },
         );
 
         res.send({
@@ -389,9 +394,8 @@ app.get("/bookings", async (req, res) => {
       }
     });
 
-    
     // ROOT
-   
+
     app.get("/", (req, res) => {
       res.send("MediQueue Server Running");
     });
