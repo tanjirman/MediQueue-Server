@@ -13,7 +13,7 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:3000",
-    "https://your-frontend-project-name.vercel.app" // ADD YOUR FRONTEND URL HERE
+    "https://medi-queue-igcv655pa-tanjirmahbub07-6178s-projects.vercel.app"
   ],
   credentials: true
 }));
