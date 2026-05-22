@@ -21,17 +21,36 @@ const { auth } = require("./auth");
 // MIDDLEWARE
 // =========================
 
+// Replace your current cors() block with this:
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "https://medi-queue-zeta.vercel.app",
-      "https://medi-queue-server-eight.vercel.app",
-      "https://medi-queue-server-8na0g7nxx-tanjirmahbub07-6178s-projects.vercel.app",
-    ],
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        "http://localhost:3000",
+        "https://medi-queue-zeta.vercel.app",
+        "https://medi-queue-server-eight.vercel.app",
+      ];
+
+      // Allow requests with no origin (Postman, curl, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // Allow any Vercel preview URL for your project
+      const isVercelPreview = /https:\/\/medi-queue-.*\.vercel\.app$/.test(origin);
+
+      if (allowedOrigins.includes(origin) || isVercelPreview) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS blocked for origin: ${origin}`));
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// Add this BEFORE your routes — handles preflight OPTIONS requests
+app.options("/{*path}", cors());
 
 app.use(express.json());
 
