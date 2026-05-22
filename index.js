@@ -138,7 +138,7 @@ const verifySession = async (
 
 async function run() {
   try {
-    // await client.connect();
+     await client.connect();
 
     console.log("✅ MongoDB Connected");
 
